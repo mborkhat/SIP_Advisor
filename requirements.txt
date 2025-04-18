@@ -1,0 +1,10 @@
+streamlit
+pandas
+requests
+scikit-learn
+transformers
+plotly
+fuzzywuzzy
+python-Levenshtein
+yfinance
+matplotlib
