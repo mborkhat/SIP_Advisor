@@ -30,7 +30,7 @@ faq_answers = {
     "types of sip": "There are types like Regular SIP, Top-up SIP, Flexible SIP, and Perpetual SIP.",
     "how sip works": "You invest a fixed amount at regular intervals (monthly/weekly), which gets invested in mutual fund units.",
     "what is top-up sip": "Top-up SIP allows you to increase your SIP amount automatically at regular intervals.",
-    "investment planning help": "Start by setting a goal, choosing right fund category, and staying consistent with SIPs.",
+    "investment planning help": "Start by setting a goal, choosing the right fund category, and staying consistent with SIPs.",
     "how to choose sip": "Consider your goals, risk tolerance, past performance, and fund house reputation before choosing a SIP.",
     "difference between sip and lump sum": "SIP invests regularly over time, while lump sum invests all at once. SIP reduces timing risk.",
     "can i stop sip anytime": "Yes, SIPs are flexible and can be paused or stopped anytime without penalty.",
@@ -60,10 +60,9 @@ if st.button("Calculate SIP Return"):
     st.success(f"Expected Return: ₹{gain:,.0f}")
     st.success(f"Maturity Value: ₹{future_value:,.0f}")
 
-# --- SIP Search ---
-st.subheader("\U0001F50D Search SIP Mutual Funds")
-st.markdown("Enter AMC Name, Fund Category (e.g., ELSS, Large Cap), or Scheme Name")
-user_query = st.text_input("Search", "Large Cap")
+# --- SIP Search & Comparison ---
+st.subheader("\U0001F50D Search SIP Mutual Funds (Live Data)")
+user_query = st.text_input("Search by AMC / Category / Fund Name", "Large Cap")
 
 @st.cache_data
 def fetch_fund_data():
@@ -81,10 +80,11 @@ funds = fetch_fund_data()
 if not funds.empty:
     filtered = funds[funds.apply(lambda row: user_query.lower() in row['schemeName'].lower(), axis=1)]
     if not filtered.empty:
-        st.dataframe(filtered[['schemeCode', 'schemeName']].head(10))
+        st.dataframe(filtered[['schemeCode', 'schemeName']].head(10))  # Optional: Keep this to show the first 10 schemes
 
-        st.subheader("\U0001F4C8 Buy / Hold / Sell Signal (1Y CAGR vs Benchmarks)")
+        st.subheader("\U0001F4C8 Buy / Hold / Sell Signal (Based on 1Y CAGR vs Benchmarks)")
         signals = []
+        index_navs = []
 
         for i, row in filtered.head(3).iterrows():
             scheme_code = row['schemeCode']
@@ -97,26 +97,34 @@ if not funds.empty:
                     navs = navs.sort_values('date')
                     one_year_return = (navs.iloc[-1]['nav'] - navs.iloc[0]['nav']) / navs.iloc[0]['nav'] * 100
 
+                    # Updated benchmark logic
                     if one_year_return > 14:
                         signal = "Buy"
                     elif one_year_return > 10:
                         signal = "Hold"
                     else:
                         signal = "Sell"
+                    
+                    # Display the NAV graph only for the selected scheme
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=navs['date'], y=navs['nav'], mode='lines', name=row['schemeName']))
+                    fig.update_layout(title=f"NAV History - {row['schemeName']}", xaxis_title="Date", yaxis_title="NAV")
+                    st.plotly_chart(fig, use_container_width=True)
 
                     signals.append((row['schemeName'], round(one_year_return, 2), signal))
 
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=navs['date'], y=navs['nav'], mode='lines', name=row['schemeName']))
-                    fig.update_layout(title=f"NAV - {row['schemeName']}", xaxis_title="Date", yaxis_title="NAV")
-                    st.plotly_chart(fig, use_container_width=True)
+                    if not index_navs:
+                        index_navs = navs.copy()
             except:
                 continue
 
         if signals:
-            df_signal = pd.DataFrame(signals, columns=["Scheme", "1Y Return (%)", "Recommendation"])
-            st.table(df_signal)
+            # Removed the table, showing just the signals for Buy/Hold/Sell
+            st.write("Recommendations based on 1Y Return and Benchmarks:")
+            for signal in signals:
+                st.write(f"Scheme: {signal[0]}, 1Y Return: {signal[1]}%, Recommendation: {signal[2]}")
+        
         else:
-            st.info("Could not compute signals. Try another search query.")
+            st.info("Could not compute signals. Try another category or AMC.")
 else:
-    st.warning("Live fund list could not be loaded. Try again later.")
+    st.warning("Live fund list could not be loaded. Try again later or check your internet connection.")
