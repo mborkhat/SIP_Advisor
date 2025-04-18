@@ -60,9 +60,10 @@ if st.button("Calculate SIP Return"):
     st.success(f"Expected Return: ₹{gain:,.0f}")
     st.success(f"Maturity Value: ₹{future_value:,.0f}")
 
-# --- SIP Search & Comparison ---
-st.subheader("\U0001F50D Search SIP Mutual Funds (Live Data)")
-user_query = st.text_input("Search by AMC / Category / Fund Name", "Large Cap")
+# --- SIP Search ---
+st.subheader("\U0001F50D Search SIP Mutual Funds")
+st.markdown("Enter AMC Name, Fund Category (e.g., ELSS, Large Cap), or Scheme Name")
+user_query = st.text_input("Search", "Large Cap")
 
 @st.cache_data
 def fetch_fund_data():
@@ -82,10 +83,8 @@ if not funds.empty:
     if not filtered.empty:
         st.dataframe(filtered[['schemeCode', 'schemeName']].head(10))
 
-        st.subheader("\U0001F4C8 Buy / Hold / Sell Signal (Based on 1Y CAGR vs Benchmarks)")
+        st.subheader("\U0001F4C8 Buy / Hold / Sell Signal (1Y CAGR vs Benchmarks)")
         signals = []
-        index_data = None
-        index_navs = []
 
         for i, row in filtered.head(3).iterrows():
             scheme_code = row['schemeCode']
@@ -98,7 +97,6 @@ if not funds.empty:
                     navs = navs.sort_values('date')
                     one_year_return = (navs.iloc[-1]['nav'] - navs.iloc[0]['nav']) / navs.iloc[0]['nav'] * 100
 
-                    # Updated benchmark logic
                     if one_year_return > 14:
                         signal = "Buy"
                     elif one_year_return > 10:
@@ -108,35 +106,17 @@ if not funds.empty:
 
                     signals.append((row['schemeName'], round(one_year_return, 2), signal))
 
-                    # Add NAV chart
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=navs['date'], y=navs['nav'], mode='lines', name=row['schemeName']))
-                    fig.update_layout(title=f"NAV History - {row['schemeName']}", xaxis_title="Date", yaxis_title="NAV")
+                    fig.update_layout(title=f"NAV - {row['schemeName']}", xaxis_title="Date", yaxis_title="NAV")
                     st.plotly_chart(fig, use_container_width=True)
-
-                    if not index_navs:
-                        index_navs = navs.copy()
             except:
                 continue
 
         if signals:
             df_signal = pd.DataFrame(signals, columns=["Scheme", "1Y Return (%)", "Recommendation"])
             st.table(df_signal)
-
-            # --- Benchmark Comparison Chart ---
-            if not index_navs.empty:
-                index_navs = index_navs.copy()
-                index_navs['simulated_nifty'] = index_navs['nav'].iloc[0] * (1 + 0.10) ** (index_navs.index / 252)
-                index_navs['benchmark_mid'] = index_navs['nav'].iloc[0] * (1 + 0.12) ** (index_navs.index / 252)
-                index_navs['benchmark_high'] = index_navs['nav'].iloc[0] * (1 + 0.14) ** (index_navs.index / 252)
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=index_navs['date'], y=index_navs['simulated_nifty'], mode='lines', name='Nifty 50 (10%)'))
-                fig.add_trace(go.Scatter(x=index_navs['date'], y=index_navs['benchmark_mid'], mode='lines', name='Benchmark (12%)'))
-                fig.add_trace(go.Scatter(x=index_navs['date'], y=index_navs['benchmark_high'], mode='lines', name='Benchmark (14%)'))
-                fig.add_trace(go.Scatter(x=index_navs['date'], y=index_navs['nav'], mode='lines', name='Fund NAV'))
-                fig.update_layout(title="Fund NAV vs Benchmarks", xaxis_title="Date", yaxis_title="Value")
-                st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("Could not compute signals. Try another category or AMC.")
+            st.info("Could not compute signals. Try another search query.")
 else:
-    st.warning("Live fund list could not be loaded. Try again later or check your internet connection.")
+    st.warning("Live fund list could not be loaded. Try again later.")
