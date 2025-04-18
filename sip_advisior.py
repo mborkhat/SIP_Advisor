@@ -78,64 +78,50 @@ def fetch_fund_data():
 funds = fetch_fund_data()
 
 if not funds.empty:
+    # Filter the funds based on the search query
     filtered = funds[funds.apply(lambda row: user_query.lower() in row['schemeName'].lower(), axis=1)]
+    
     if not filtered.empty:
-        st.table(filtered[['schemeCode', 'schemeName']].head(10))  # Show the table of filtered schemes
+        # Only display the first match for the search input
+        selected_scheme = filtered.iloc[0]
+        scheme_code = selected_scheme['schemeCode']
+        scheme_name = selected_scheme['schemeName']
+        
+        st.subheader(f"Selected Scheme: {scheme_name}")
 
-        st.subheader("\U0001F4C8 Buy / Hold / Sell Signal (Based on 1Y CAGR vs Benchmarks)")
-        signals = []
-        index_navs = []
+        # Fetch detailed data for the selected scheme
+        detail_url = f"https://api.mfapi.in/mf/{scheme_code}"
+        try:
+            detail = requests.get(detail_url).json()
+            if 'data' in detail and len(detail['data']) >= 365:
+                navs = pd.DataFrame(detail['data'])
+                navs['nav'] = navs['nav'].astype(float)
+                navs = navs.sort_values('date')
+                one_year_return = (navs.iloc[-1]['nav'] - navs.iloc[0]['nav']) / navs.iloc[0]['nav'] * 100
 
-        for i, row in filtered.iterrows():
-            scheme_code = row['schemeCode']
-            detail_url = f"https://api.mfapi.in/mf/{scheme_code}"
-            try:
-                detail = requests.get(detail_url).json()
-                if 'data' in detail and len(detail['data']) >= 365:
-                    navs = pd.DataFrame(detail['data'])
-                    navs['nav'] = navs['nav'].astype(float)
-                    navs = navs.sort_values('date')
-                    one_year_return = (navs.iloc[-1]['nav'] - navs.iloc[0]['nav']) / navs.iloc[0]['nav'] * 100
+                # Updated benchmark logic
+                if one_year_return > 14:
+                    signal = "Buy"
+                elif one_year_return > 10:
+                    signal = "Hold"
+                else:
+                    signal = "Sell"
 
-                    # Updated benchmark logic
-                    if one_year_return > 14:
-                        signal = "Buy"
-                    elif one_year_return > 10:
-                        signal = "Hold"
-                    else:
-                        signal = "Sell"
-
-                    signals.append((row['schemeName'], round(one_year_return, 2), signal))
-
-                    # Display the NAV graph for each scheme
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=navs['date'], y=navs['nav'], mode='lines', name=row['schemeName']))
-                    fig.update_layout(title=f"NAV History - {row['schemeName']}", xaxis_title="Date", yaxis_title="NAV")
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    if not index_navs:
-                        index_navs = navs.copy()
-            except:
-                continue
-
-        if signals:
-            df_signal = pd.DataFrame(signals, columns=["Scheme", "1Y Return (%)", "Recommendation"])
-            st.table(df_signal)  # Display the table with schemes and recommendations
-
-            # --- Benchmark Comparison Chart ---
-            if not index_navs.empty:
-                index_navs = index_navs.copy()
-                index_navs['simulated_nifty'] = index_navs['nav'].iloc[0] * (1 + 0.10) ** (index_navs.index / 252)
-                index_navs['benchmark_mid'] = index_navs['nav'].iloc[0] * (1 + 0.12) ** (index_navs.index / 252)
-                index_navs['benchmark_high'] = index_navs['nav'].iloc[0] * (1 + 0.14) ** (index_navs.index / 252)
+                # Display the NAV chart for the selected scheme
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=index_navs['date'], y=index_navs['simulated_nifty'], mode='lines', name='Nifty 50 (10%)'))
-                fig.add_trace(go.Scatter(x=index_navs['date'], y=index_navs['benchmark_mid'], mode='lines', name='Benchmark (12%)'))
-                fig.add_trace(go.Scatter(x=index_navs['date'], y=index_navs['benchmark_high'], mode='lines', name='Benchmark (14%)'))
-                fig.add_trace(go.Scatter(x=index_navs['date'], y=index_navs['nav'], mode='lines', name='Fund NAV'))
-                fig.update_layout(title="Fund NAV vs Benchmarks", xaxis_title="Date", yaxis_title="Value")
+                fig.add_trace(go.Scatter(x=navs['date'], y=navs['nav'], mode='lines', name=scheme_name))
+                fig.update_layout(title=f"NAV History - {scheme_name}", xaxis_title="Date", yaxis_title="NAV")
                 st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Could not compute signals. Try another category or AMC.")
+
+                # Display the Buy/Hold/Sell signal
+                st.subheader("Buy/Hold/Sell Signal")
+                st.write(f"1-Year Return: {round(one_year_return, 2)}%")
+                st.write(f"Recommendation: {signal}")
+            else:
+                st.warning("Not enough data to calculate signals.")
+        except Exception as e:
+            st.error(f"Error fetching data for {scheme_name}: {e}")
+    else:
+        st.warning("No schemes found matching your search.")
 else:
     st.warning("Live fund list could not be loaded. Try again later or check your internet connection.")
