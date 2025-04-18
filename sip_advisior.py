@@ -80,13 +80,13 @@ funds = fetch_fund_data()
 if not funds.empty:
     filtered = funds[funds.apply(lambda row: user_query.lower() in row['schemeName'].lower(), axis=1)]
     if not filtered.empty:
-        st.dataframe(filtered[['schemeCode', 'schemeName']].head(10))  # Optional: Keep this to show the first 10 schemes
+        st.table(filtered[['schemeCode', 'schemeName']].head(10))  # Show the table of filtered schemes
 
         st.subheader("\U0001F4C8 Buy / Hold / Sell Signal (Based on 1Y CAGR vs Benchmarks)")
         signals = []
         index_navs = []
 
-        for i, row in filtered.head(3).iterrows():
+        for i, row in filtered.iterrows():
             scheme_code = row['schemeCode']
             detail_url = f"https://api.mfapi.in/mf/{scheme_code}"
             try:
@@ -104,14 +104,14 @@ if not funds.empty:
                         signal = "Hold"
                     else:
                         signal = "Sell"
-                    
-                    # Display the NAV graph only for the selected scheme
+
+                    signals.append((row['schemeName'], round(one_year_return, 2), signal))
+
+                    # Display the NAV graph for each scheme
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=navs['date'], y=navs['nav'], mode='lines', name=row['schemeName']))
                     fig.update_layout(title=f"NAV History - {row['schemeName']}", xaxis_title="Date", yaxis_title="NAV")
                     st.plotly_chart(fig, use_container_width=True)
-
-                    signals.append((row['schemeName'], round(one_year_return, 2), signal))
 
                     if not index_navs:
                         index_navs = navs.copy()
@@ -119,11 +119,22 @@ if not funds.empty:
                 continue
 
         if signals:
-            # Removed the table, showing just the signals for Buy/Hold/Sell
-            st.write("Recommendations based on 1Y Return and Benchmarks:")
-            for signal in signals:
-                st.write(f"Scheme: {signal[0]}, 1Y Return: {signal[1]}%, Recommendation: {signal[2]}")
-        
+            df_signal = pd.DataFrame(signals, columns=["Scheme", "1Y Return (%)", "Recommendation"])
+            st.table(df_signal)  # Display the table with schemes and recommendations
+
+            # --- Benchmark Comparison Chart ---
+            if not index_navs.empty:
+                index_navs = index_navs.copy()
+                index_navs['simulated_nifty'] = index_navs['nav'].iloc[0] * (1 + 0.10) ** (index_navs.index / 252)
+                index_navs['benchmark_mid'] = index_navs['nav'].iloc[0] * (1 + 0.12) ** (index_navs.index / 252)
+                index_navs['benchmark_high'] = index_navs['nav'].iloc[0] * (1 + 0.14) ** (index_navs.index / 252)
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=index_navs['date'], y=index_navs['simulated_nifty'], mode='lines', name='Nifty 50 (10%)'))
+                fig.add_trace(go.Scatter(x=index_navs['date'], y=index_navs['benchmark_mid'], mode='lines', name='Benchmark (12%)'))
+                fig.add_trace(go.Scatter(x=index_navs['date'], y=index_navs['benchmark_high'], mode='lines', name='Benchmark (14%)'))
+                fig.add_trace(go.Scatter(x=index_navs['date'], y=index_navs['nav'], mode='lines', name='Fund NAV'))
+                fig.update_layout(title="Fund NAV vs Benchmarks", xaxis_title="Date", yaxis_title="Value")
+                st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Could not compute signals. Try another category or AMC.")
 else:
