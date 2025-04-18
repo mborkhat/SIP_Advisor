@@ -1,10 +1,8 @@
 streamlit
-yfinance
 pandas
-plotly
-torch
-transformers
-fuzzywuzzy
 requests
-python-Levenshtein
-yahoo_fin
+plotly
+transformers
+torch
+fuzzywuzzy
+python-Levenshtein  # for fuzzywuzzy speedup
