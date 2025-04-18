@@ -1,0 +1,12 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints
+
+# VSCode
+.vscode/
