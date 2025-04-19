@@ -65,37 +65,44 @@ if st.button("Calculate SIP Return"):
 
     st.markdown("### \U0001F4A1 Top 3 Suggested SIP Schemes Based on Your Input")
 
-    funds = pd.read_json("https://api.mfapi.in/mf")
-    filtered_funds = funds[funds["schemeName"].str.contains("(large cap|flexi|elss)", case=False, regex=True)]
+    try:
+        funds = pd.read_json("https://api.mfapi.in/mf")
+        filtered_funds = funds[funds["schemeName"].str.contains("(large cap|flexi|elss)", case=False, regex=True)]
 
-    # Fetch NAV data and calculate 3-year return
-    top_returns = []
-    for i, row in filtered_funds.iterrows():
-        try:
-            nav_data = requests.get(f"https://api.mfapi.in/mf/{row['schemeCode']}").json()
-            data = nav_data['data']
-            df = pd.DataFrame(data)
-            df['date'] = pd.to_datetime(df['date'], dayfirst=True)
-            df['nav'] = pd.to_numeric(df['nav'], errors='coerce')
-            df = df.sort_values('date')
+        # Fetch NAV data and calculate 3-year return
+        top_returns = []
+        for i, row in filtered_funds.iterrows():
+            try:
+                nav_data = requests.get(f"https://api.mfapi.in/mf/{row['schemeCode']}").json()
+                data = nav_data['data']
+                df = pd.DataFrame(data)
+                df['date'] = pd.to_datetime(df['date'], dayfirst=True)
+                df['nav'] = pd.to_numeric(df['nav'], errors='coerce')
+                df = df.sort_values('date')
 
-            three_years_ago = datetime.now() - timedelta(days=3*365)
-            df = df[df['date'] >= three_years_ago]
+                three_years_ago = datetime.now() - timedelta(days=3*365)
+                df = df[df['date'] >= three_years_ago]
 
-            if len(df) < 2:
+                if len(df) < 2:
+                    continue
+
+                start_nav = df.iloc[0]['nav']
+                end_nav = df.iloc[-1]['nav']
+                return_3y = ((end_nav - start_nav) / start_nav) * 100
+                top_returns.append((row['schemeCode'], row['schemeName'], return_3y))
+            except:
                 continue
 
-            start_nav = df.iloc[0]['nav']
-            end_nav = df.iloc[-1]['nav']
-            return_3y = ((end_nav - start_nav) / start_nav) * 100
-            top_returns.append((row['schemeCode'], row['schemeName'], return_3y))
-        except:
-            continue
+        if top_returns:
+            top_returns = sorted(top_returns, key=lambda x: x[2], reverse=True)[:3]
+            df_top = pd.DataFrame(top_returns, columns=["schemeCode", "schemeName", "3Y Return (%)"])
+            st.dataframe(df_top)
 
-    top_returns = sorted(top_returns, key=lambda x: x[2], reverse=True)[:3]
-    df_top = pd.DataFrame(top_returns, columns=["schemeCode", "schemeName", "3Y Return (%)"])
-    st.dataframe(df_top)
+            st.markdown("---")
+            st.markdown("### \U0001F4A1 Based on your inputs: ₹{} monthly for {} years expecting {}% return, here are top 3 schemes (last 3Y performance):".format(sip_amt, sip_years, expected_return))
+            st.dataframe(df_top[["schemeName", "3Y Return (%)"]])
+        else:
+            st.warning("No top schemes found at the moment. Please try again later.")
 
-    st.markdown("---")
-    st.markdown("### \U0001F4A1 Based on your inputs: ₹{} monthly for {} years expecting {}% return, here are top 3 schemes (last 3Y performance):".format(sip_amt, sip_years, expected_return))
-    st.dataframe(df_top[["schemeName", "3Y Return (%)"]])
+    except Exception as e:
+        st.error("Smart suggestion failed to load. Reason: {}".format(e))
