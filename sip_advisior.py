@@ -4,7 +4,12 @@ import requests
 import plotly.graph_objects as go
 from fuzzywuzzy import process
 from datetime import datetime, timedelta
+from transformers import pipeline
 
+# Initialize the NER pipeline
+ner_pipeline = pipeline("ner", model="dslim/bert-base-NER", grouped_entities=True)
+
+# Set up Streamlit page configuration
 st.set_page_config(page_title="SIP Advisor", layout="wide")
 st.title("\U0001F4C8 SIP Advisor - AI Powered (Free)")
 
@@ -47,6 +52,25 @@ if matched and matched[1] > 70:
 else:
     st.info("I'm here to help with SIPs! Try asking: 'What is SIP?', 'Benefits of SIP', or 'Types of SIPs'")
 
+# --- NLP for Goal Extraction ---
+def extract_entities(user_input):
+    entities = ner_pipeline(user_input)
+    extracted_entities = {}
+    for entity in entities:
+        if entity['entity_group'] == 'MISC':
+            continue
+        if entity['entity_group'] not in extracted_entities:
+            extracted_entities[entity['entity_group']] = []
+        extracted_entities[entity['entity_group']].append(entity['word'])
+    return extracted_entities
+
+# Example user input
+user_input = st.text_input("Enter your SIP request", "I want to invest ₹5000 monthly in Large Cap funds for 6 months expecting 12% return")
+
+if user_input:
+    extracted_entities = extract_entities(user_input)
+    st.write(f"Extracted Entities: {extracted_entities}")
+
 # --- SIP Calculator ---
 st.subheader("\U0001F4CA SIP Return Calculator")
 sip_amt = st.number_input("Monthly SIP Amount (₹)", value=1000, step=500)
@@ -64,13 +88,12 @@ if st.button("Calculate SIP Return"):
     st.success(f"Expected Return: ₹{gain:,.0f}")
     st.success(f"Maturity Value: ₹{future_value:,.0f}")
 
-# --- SIP Search ---
+# --- SIP Search and Filters ---
 st.subheader("\U0001F50D Search SIP Mutual Funds")
 st.markdown("Enter AMC Name, Fund Category (e.g., ELSS, Large Cap), or Scheme Name")
 user_query = st.text_input("Search", "Large Cap")
 
 @st.cache_data
-
 def fetch_fund_data():
     url = "https://api.mfapi.in/mf"
     try:
@@ -149,3 +172,17 @@ if not funds.empty:
         st.warning("No schemes found matching your search.")
 else:
     st.warning("Live fund list could not be loaded. Try again later.")
+    
+# --- Filter and Display Funds by Risk and AMC ---
+risk_levels = funds['risk_level'].unique() if 'risk_level' in funds.columns else ['Low', 'Medium', 'High']
+selected_risk = st.selectbox("Select Risk Level", risk_levels)
+
+amc_names = funds['amc_name'].unique() if 'amc_name' in funds.columns else ['AMCs']
+selected_amc = st.selectbox("Select AMC", amc_names)
+
+filtered_funds = funds[
+    (funds['risk_level'] == selected_risk) &
+    (funds['amc_name'] == selected_amc)
+]
+
+st.dataframe(filtered_funds)
