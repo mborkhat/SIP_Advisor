@@ -97,57 +97,55 @@ nifty_df = fetch_nifty_data()
 if not funds.empty:
     filtered = funds[funds.apply(lambda row: user_query.lower() in row['schemeName'].lower(), axis=1)]
     if not filtered.empty:
-        st.dataframe(filtered[['schemeCode', 'schemeName']].head(10))
+        selected_scheme = filtered.iloc[0]
+        scheme_code = selected_scheme['schemeCode']
+        scheme_name = selected_scheme['schemeName']
 
-        st.subheader("\U0001F4C8 Buy / Hold / Sell Signal (1Y CAGR vs Benchmarks)")
-        signals = []
+        st.subheader(f"Selected Scheme: {scheme_name}")
 
-        for i, row in filtered.head(3).iterrows():
-            scheme_code = row['schemeCode']
-            detail_url = f"https://api.mfapi.in/mf/{scheme_code}"
-            try:
-                detail = requests.get(detail_url).json()
-                if 'data' in detail and len(detail['data']) >= 250:
-                    navs = pd.DataFrame(detail['data'])
-                    navs['date'] = pd.to_datetime(navs['date'])
-                    navs['nav'] = navs['nav'].astype(float)
-                    navs = navs.sort_values('date')
+        detail_url = f"https://api.mfapi.in/mf/{scheme_code}"
+        try:
+            detail = requests.get(detail_url).json()
+            if 'data' in detail and len(detail['data']) >= 250:
+                navs = pd.DataFrame(detail['data'])
+                navs['date'] = pd.to_datetime(navs['date'])
+                navs['nav'] = navs['nav'].astype(float)
+                navs = navs.sort_values('date')
 
-                    one_year_ago = navs['date'].max() - pd.DateOffset(years=1)
-                    navs_filtered = navs[navs['date'] >= one_year_ago]
-                    one_year_return = (navs_filtered.iloc[-1]['nav'] - navs_filtered.iloc[0]['nav']) / navs_filtered.iloc[0]['nav'] * 100
+                one_year_ago = navs['date'].max() - pd.DateOffset(years=1)
+                navs_filtered = navs[navs['date'] >= one_year_ago]
+                one_year_return = (navs_filtered.iloc[-1]['nav'] - navs_filtered.iloc[0]['nav']) / navs_filtered.iloc[0]['nav'] * 100
 
-                    if one_year_return > 14:
-                        signal = "Buy"
-                    elif one_year_return > 10:
-                        signal = "Hold"
-                    else:
-                        signal = "Sell"
+                if one_year_return > 14:
+                    signal = "Buy"
+                elif one_year_return > 10:
+                    signal = "Hold"
+                else:
+                    signal = "Sell"
 
-                    signals.append((row['schemeName'], round(one_year_return, 2), signal))
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=navs['date'], y=navs['nav'], mode='lines', name=scheme_name))
 
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=navs['date'], y=navs['nav'], mode='lines', name=row['schemeName']))
+                if not nifty_df.empty:
+                    merged = pd.merge(navs, nifty_df, left_on=navs['date'].dt.strftime('%Y-%m-%d'), right_on='Date', how='left')
+                    fig.add_trace(go.Scatter(x=merged['date'], y=merged['Nifty_Close'], mode='lines', name='Nifty 50'))
 
-                    # Merge with Nifty data if available
-                    if not nifty_df.empty:
-                        merged = pd.merge(navs, nifty_df, left_on='date', right_on='Date', how='left')
-                        fig.add_trace(go.Scatter(x=merged['date'], y=merged['Nifty_Close'], mode='lines', name='Nifty 50'))
+                fig.update_layout(
+                    title=f"NAV vs Nifty - {scheme_name}",
+                    xaxis_title="Date",
+                    yaxis_title="Value",
+                    xaxis_rangeslider_visible=True
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
-                    fig.update_layout(
-                        title=f"NAV vs Nifty - {row['schemeName']}",
-                        xaxis_title="Date",
-                        yaxis_title="Value",
-                        xaxis_rangeslider_visible=True
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-            except:
-                continue
-
-        if signals:
-            df_signal = pd.DataFrame(signals, columns=["Scheme", "1Y Return (%)", "Recommendation"])
-            st.table(df_signal)
-        else:
-            st.info("Could not compute signals. Try another search query.")
+                st.subheader("Buy/Hold/Sell Signal")
+                st.write(f"1-Year Return: {round(one_year_return, 2)}%")
+                st.write(f"Recommendation: {signal}")
+            else:
+                st.warning("Not enough data to calculate signals.")
+        except Exception as e:
+            st.error(f"Error fetching data for {scheme_name}: {e}")
+    else:
+        st.warning("No schemes found matching your search.")
 else:
     st.warning("Live fund list could not be loaded. Try again later.")
