@@ -6,7 +6,6 @@ from fuzzywuzzy import process
 from transformers import pipeline
 from datetime import datetime, timedelta
 
-# Set Streamlit page config
 st.set_page_config(page_title="SIP Advisor", layout="wide")
 st.title("\U0001F4C8 SIP Advisor - AI Powered (Free)")
 
@@ -23,7 +22,6 @@ This app helps you:
 Data source: Free Mutual Fund APIs (MFAPI.in)
 """)
 
-# --- Static FAQ Chatbot ---
 st.subheader("\U0001F916 SIP Assistant (FAQs)")
 faq_input = st.text_input("Ask your SIP-related question", "What is SIP?")
 
@@ -49,11 +47,10 @@ if matched and matched[1] > 70:
 else:
     st.info("I'm here to help with SIPs! Try asking: 'What is SIP?', 'Benefits of SIP', or 'Types of SIPs'")
 
-# --- SIP Calculator ---
 st.subheader("\U0001F4CA SIP Return Calculator")
-sip_amt = st.number_input("Monthly SIP Amount (₹)", value=1000, step=500)
-sip_years = st.slider("Investment Duration (years)", 1, 30, 10)
-expected_return = st.slider("Expected Annual Return (%)", 1, 20, 12)
+sip_amt = st.number_input("Monthly SIP Amount (₹)", value=5000, step=500)
+sip_years = st.slider("Investment Duration (years)", 1, 30, 1)
+expected_return = st.slider("Expected Annual Return (%)", 1, 25, 12)
 
 if st.button("Calculate SIP Return"):
     n_months = sip_years * 12
@@ -66,132 +63,39 @@ if st.button("Calculate SIP Return"):
     st.success(f"Expected Return: ₹{gain:,.0f}")
     st.success(f"Maturity Value: ₹{future_value:,.0f}")
 
-# --- SIP Search ---
-st.subheader("\U0001F50D Search SIP Mutual Funds")
-st.markdown("Enter AMC Name, Fund Category (e.g., ELSS, Large Cap), or Scheme Name")
-user_query = st.text_input("Search", "Large Cap")
+    st.markdown("### \U0001F4A1 Top 3 Suggested SIP Schemes Based on Your Input")
 
-# --- Smart Recommendations ---
-st.markdown("### \U0001F4A1 Smart Top 3 SIP Suggestions")
+    funds = pd.read_json("https://api.mfapi.in/mf")
+    filtered_funds = funds[funds["schemeName"].str.contains("(large cap|flexi|elss)", case=False, regex=True)]
 
-nlp_model = pipeline("ner", model="dbmdz/bert-large-cased-finetuned-conll03-english", device=-1)
-
-@st.cache_data
-def fetch_fund_data():
-    url = "https://api.mfapi.in/mf"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        return pd.DataFrame(data)
-    except:
-        return pd.DataFrame([])
-
-def fetch_nifty_data():
-    try:
-        url = "https://query1.finance.yahoo.com/v7/finance/download/^NSEI?period1=0&period2=9999999999&interval=1d&events=history"
-        df = pd.read_csv(url)
-        df = df[['Date', 'Close']].rename(columns={"Close": "Nifty_Close"})
-        df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d')
-        return df
-    except:
-        return pd.DataFrame()
-
-def get_top_schemes_based_on_input(query, funds_df):
-    query = query.lower()
-    if "elss" in query or "tax" in query:
-        return funds_df[funds_df['schemeName'].str.lower().str.contains("elss")].head(3)
-    elif "large cap" in query:
-        return funds_df[funds_df['schemeName'].str.lower().str.contains("large cap")].head(3)
-    elif "12%" in query and ("6m" in query or "6 months" in query):
-        return funds_df[funds_df['schemeName'].str.lower().str.contains("growth")].head(3)
-    else:
-        return pd.DataFrame()
-
-funds = fetch_fund_data()
-nifty_df = fetch_nifty_data()
-
-if not funds.empty:
-    filtered = funds[funds.apply(lambda row: user_query.lower() in row['schemeName'].lower(), axis=1)]
-    if not filtered.empty:
-        selected_scheme = filtered.iloc[0]
-        scheme_code = selected_scheme['schemeCode']
-        scheme_name = selected_scheme['schemeName']
-
-        top_schemes = get_top_schemes_based_on_input(user_query, funds)
-        if not top_schemes.empty:
-            for _, row in top_schemes.iterrows():
-                st.markdown(f"**{row['schemeName']}**  ")
-
-        st.subheader(f"Selected Scheme: {scheme_name}")
-
-        detail_url = f"https://api.mfapi.in/mf/{scheme_code}"
+    # Fetch NAV data and calculate 3-year return
+    top_returns = []
+    for i, row in filtered_funds.iterrows():
         try:
-            detail = requests.get(detail_url).json()
-            if 'data' in detail and len(detail['data']) >= 30:
-                navs = pd.DataFrame(detail['data'])
-                navs['date'] = pd.to_datetime(navs['date'])
-                navs['nav'] = navs['nav'].astype(float)
-                navs = navs.sort_values('date')
+            nav_data = requests.get(f"https://api.mfapi.in/mf/{row['schemeCode']}").json()
+            data = nav_data['data']
+            df = pd.DataFrame(data)
+            df['date'] = pd.to_datetime(df['date'], dayfirst=True)
+            df['nav'] = pd.to_numeric(df['nav'], errors='coerce')
+            df = df.sort_values('date')
 
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    return_period = st.selectbox("\U0001F552 Return Comparison Period", ["1y", "1m", "3m", "6m", "2y", "3y", "5y", "till date"], index=0)
+            three_years_ago = datetime.now() - timedelta(days=3*365)
+            df = df[df['date'] >= three_years_ago]
 
-                period_mapping = {
-                    "1m": pd.DateOffset(months=1),
-                    "3m": pd.DateOffset(months=3),
-                    "6m": pd.DateOffset(months=6),
-                    "1y": pd.DateOffset(years=1),
-                    "2y": pd.DateOffset(years=2),
-                    "3y": pd.DateOffset(years=3),
-                    "5y": pd.DateOffset(years=5),
-                    "till date": None
-                }
+            if len(df) < 2:
+                continue
 
-                if return_period != "till date":
-                    start_date = navs['date'].max() - period_mapping[return_period]
-                    navs_filtered = navs[navs['date'] >= start_date]
-                else:
-                    navs_filtered = navs.copy()
+            start_nav = df.iloc[0]['nav']
+            end_nav = df.iloc[-1]['nav']
+            return_3y = ((end_nav - start_nav) / start_nav) * 100
+            top_returns.append((row['schemeCode'], row['schemeName'], return_3y))
+        except:
+            continue
 
-                if len(navs_filtered) > 1:
-                    selected_return = (navs_filtered.iloc[-1]['nav'] - navs_filtered.iloc[0]['nav']) / navs_filtered.iloc[0]['nav'] * 100
-                    signal = "Buy" if selected_return > 14 else "Hold" if selected_return > 10 else "Sell"
+    top_returns = sorted(top_returns, key=lambda x: x[2], reverse=True)[:3]
+    df_top = pd.DataFrame(top_returns, columns=["schemeCode", "schemeName", "3Y Return (%)"])
+    st.dataframe(df_top)
 
-                    with col2:
-                        st.metric(label=f"{return_period} Return", value=f"{selected_return:.2f}%", delta=signal)
-
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=navs['date'], y=navs['nav'], mode='lines', name=f"{scheme_name} NAV"))
-
-                    if not nifty_df.empty:
-                        merged = pd.merge(navs, nifty_df, left_on=navs['date'].dt.strftime('%Y-%m-%d'), right_on='Date', how='left')
-                        fig.add_trace(go.Scatter(x=merged['date'], y=merged['Nifty_Close'], mode='lines', name='Nifty 50 Index'))
-
-                    fig.update_layout(
-                        title=f"NAV vs Nifty - {scheme_name}",
-                        xaxis_title="Date",
-                        yaxis_title="Value",
-                        xaxis_rangeslider_visible=True
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    st.subheader("Buy/Hold/Sell Signal")
-                    st.write(f"Recommendation: {signal}")
-                else:
-                    st.warning("Not enough data for the selected period.")
-            else:
-                st.warning("Not enough data to calculate signals.")
-        except Exception as e:
-            st.error(f"Error fetching data for {scheme_name}: {e}")
-    else:
-        st.warning("No schemes found matching your search.")
-else:
-    st.warning("Live fund list could not be loaded. Try again later.")
-
-# --- Coming Soon Section ---
-st.markdown("---")
-st.markdown("## \U0001F680 Coming Soon")
-st.markdown("1. **Compare multiple SIP schemes** for selected time periods (e.g., 6-month return comparison)")
-st.markdown("2. **Real-time SIP simulation** showing investment journey month-by-month")
+    st.markdown("---")
+    st.markdown("### \U0001F4A1 Based on your inputs: ₹{} monthly for {} years expecting {}% return, here are top 3 schemes (last 3Y performance):".format(sip_amt, sip_years, expected_return))
+    st.dataframe(df_top[["schemeName", "3Y Return (%)"]])
