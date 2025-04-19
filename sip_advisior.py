@@ -71,7 +71,7 @@ st.subheader("\U0001F50D Search SIP Mutual Funds")
 st.markdown("Enter AMC Name, Fund Category (e.g., ELSS, Large Cap), or Scheme Name")
 user_query = st.text_input("Search", "Large Cap")
 
-# Load the NLP model for extracting user inputs like goals, amounts, durations
+# Load the NLP model for extracting user inputs
 nlp_model = pipeline("ner", model="dbmdz/bert-large-cased-finetuned-conll03-english", device=-1)
 
 @st.cache_data
@@ -95,34 +95,20 @@ def fetch_nifty_data():
     except:
         return pd.DataFrame()
 
+def get_top_schemes_based_on_input(query, funds_df):
+    query = query.lower()
+    if "elss" in query or "tax" in query:
+        return funds_df[funds_df['schemeName'].str.lower().str.contains("elss")].head(3)
+    elif "large cap" in query:
+        return funds_df[funds_df['schemeName'].str.lower().str.contains("large cap")].head(3)
+    elif "12%" in query and ("6m" in query or "6 months" in query):
+        return funds_df[funds_df['schemeName'].str.lower().str.contains("growth")].head(3)
+    else:
+        return pd.DataFrame()
+
 funds = fetch_fund_data()
 nifty_df = fetch_nifty_data()
 
-# Smart Recommendations based on query
-st.subheader("\U0001F9E0 Smart SIP Suggestions")
-
-def get_top_schemes_based_on_input(query):
-    query_lower = query.lower()
-
-    if 'tax' in query_lower or 'elss' in query_lower:
-        filtered = funds[funds['schemeName'].str.lower().str.contains("elss")]
-    elif 'large cap' in query_lower:
-        filtered = funds[funds['schemeName'].str.lower().str.contains("large cap")]
-    elif '12' in query_lower and '6' in query_lower:
-        filtered = funds[funds['schemeName'].str.lower().str.contains("large cap|growth")]
-    else:
-        return []
-
-    return filtered.head(3).to_dict(orient='records')
-
-smart_recs = get_top_schemes_based_on_input(user_query)
-
-if smart_recs:
-    st.markdown("**Top Schemes Based on Your Input:**")
-    for scheme in smart_recs:
-        st.write(f"- {scheme['schemeName']}")
-
-# Original fuzzy scheme search
 if not funds.empty:
     filtered = funds[funds.apply(lambda row: user_query.lower() in row['schemeName'].lower(), axis=1)]
     if not filtered.empty:
@@ -135,46 +121,73 @@ if not funds.empty:
         detail_url = f"https://api.mfapi.in/mf/{scheme_code}"
         try:
             detail = requests.get(detail_url).json()
-            if 'data' in detail and len(detail['data']) >= 250:
+            if 'data' in detail and len(detail['data']) >= 30:
                 navs = pd.DataFrame(detail['data'])
                 navs['date'] = pd.to_datetime(navs['date'])
                 navs['nav'] = navs['nav'].astype(float)
                 navs = navs.sort_values('date')
 
-                one_year_ago = navs['date'].max() - pd.DateOffset(years=1)
-                navs_filtered = navs[navs['date'] >= one_year_ago]
-                one_year_return = (navs_filtered.iloc[-1]['nav'] - navs_filtered.iloc[0]['nav']) / navs_filtered.iloc[0]['nav'] * 100
+                st.subheader("Return Comparison Period")
+                return_period = st.selectbox("Select period", ["1y", "1m", "3m", "6m", "2y", "3y", "5y", "till date"], index=0)
 
-                if one_year_return > 14:
-                    signal = "Buy"
-                elif one_year_return > 10:
-                    signal = "Hold"
+                period_mapping = {
+                    "1m": pd.DateOffset(months=1),
+                    "3m": pd.DateOffset(months=3),
+                    "6m": pd.DateOffset(months=6),
+                    "1y": pd.DateOffset(years=1),
+                    "2y": pd.DateOffset(years=2),
+                    "3y": pd.DateOffset(years=3),
+                    "5y": pd.DateOffset(years=5),
+                    "till date": None
+                }
+
+                if return_period != "till date":
+                    start_date = navs['date'].max() - period_mapping[return_period]
+                    navs_filtered = navs[navs['date'] >= start_date]
                 else:
-                    signal = "Sell"
+                    navs_filtered = navs.copy()
 
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=navs['date'], y=navs['nav'], mode='lines', name=scheme_name))
+                if len(navs_filtered) > 1:
+                    selected_return = (navs_filtered.iloc[-1]['nav'] - navs_filtered.iloc[0]['nav']) / navs_filtered.iloc[0]['nav'] * 100
+                    if selected_return > 14:
+                        signal = "Buy"
+                    elif selected_return > 10:
+                        signal = "Hold"
+                    else:
+                        signal = "Sell"
 
-                if not nifty_df.empty:
-                    merged = pd.merge(navs, nifty_df, left_on=navs['date'].dt.strftime('%Y-%m-%d'), right_on='Date', how='left')
-                    fig.add_trace(go.Scatter(x=merged['date'], y=merged['Nifty_Close'], mode='lines', name='Nifty 50'))
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=navs['date'], y=navs['nav'], mode='lines', name=f"{scheme_name} NAV"))
 
-                fig.update_layout(
-                    title=f"NAV vs Nifty - {scheme_name}",
-                    xaxis_title="Date",
-                    yaxis_title="Value",
-                    xaxis_rangeslider_visible=True
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                    if not nifty_df.empty:
+                        merged = pd.merge(navs, nifty_df, left_on=navs['date'].dt.strftime('%Y-%m-%d'), right_on='Date', how='left')
+                        fig.add_trace(go.Scatter(x=merged['date'], y=merged['Nifty_Close'], mode='lines', name='Nifty 50 Index'))
 
-                st.subheader("Buy/Hold/Sell Signal")
-                st.write(f"1-Year Return: {round(one_year_return, 2)}%")
-                st.write(f"Recommendation: {signal}")
+                    fig.update_layout(
+                        title=f"NAV vs Nifty - {scheme_name}",
+                        xaxis_title="Date",
+                        yaxis_title="Value",
+                        xaxis_rangeslider_visible=True
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    st.subheader("Buy/Hold/Sell Signal")
+                    st.write(f"{return_period} Return: {round(selected_return, 2)}%")
+                    st.write(f"Recommendation: {signal}")
+                else:
+                    st.warning("Not enough data for the selected period.")
             else:
                 st.warning("Not enough data to calculate signals.")
         except Exception as e:
             st.error(f"Error fetching data for {scheme_name}: {e}")
     else:
         st.warning("No schemes found matching your search.")
+
+    # --- Smart Recommendations ---
+    st.subheader("\U0001F4A1 Smart Top 3 SIP Suggestions")
+    top_schemes = get_top_schemes_based_on_input(user_query, funds)
+    if not top_schemes.empty:
+        for _, row in top_schemes.iterrows():
+            st.markdown(f"**{row['schemeName']}**  ")
 else:
     st.warning("Live fund list could not be loaded. Try again later.")
