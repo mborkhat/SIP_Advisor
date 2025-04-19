@@ -69,7 +69,6 @@ if st.button("Calculate SIP Return"):
         funds = pd.read_json("https://api.mfapi.in/mf")
         filtered_funds = funds[funds["schemeName"].str.contains("(large cap|flexi|elss)", case=False, regex=True)]
 
-        # Fetch NAV data and calculate 3-year return
         top_returns = []
         for i, row in filtered_funds.iterrows():
             try:
@@ -106,3 +105,49 @@ if st.button("Calculate SIP Return"):
 
     except Exception as e:
         st.error("Smart suggestion failed to load. Reason: {}".format(e))
+
+st.subheader("\U0001F4C9 Compare & Simulate SIP Returns")
+try:
+    funds = pd.read_json("https://api.mfapi.in/mf")
+    funds = funds[funds["schemeName"].str.contains("(large cap|flexi|elss)", case=False, regex=True)]
+    scheme_dict = dict(zip(funds["schemeName"], funds["schemeCode"]))
+    selected_schemes = st.multiselect("Select SIP Schemes to Compare", list(scheme_dict.keys())[:50])
+
+    if selected_schemes:
+        sim_years = st.slider("SIP Simulation Duration (years)", 1, 10, 3)
+        sim_amount = st.number_input("Monthly Investment Amount (₹)", value=5000, step=500)
+
+        def simulate_sip(df, amount):
+            df = df.copy()
+            df = df.set_index('date').resample('MS').first().dropna().reset_index()
+            df = df.sort_values('date')
+            units = 0
+            for _, row in df.iterrows():
+                nav = row['nav']
+                if nav > 0:
+                    units += amount / nav
+            final_value = units * df.iloc[-1]['nav']
+            invested = amount * len(df)
+            return invested, final_value, final_value - invested
+
+        results = []
+        for name in selected_schemes:
+            code = scheme_dict[name]
+            try:
+                data = requests.get(f"https://api.mfapi.in/mf/{code}").json()['data']
+                df = pd.DataFrame(data)
+                df['date'] = pd.to_datetime(df['date'], dayfirst=True)
+                df['nav'] = pd.to_numeric(df['nav'], errors='coerce')
+                df = df.sort_values('date')
+                start_date = datetime.now() - timedelta(days=sim_years * 365)
+                df = df[df['date'] >= start_date]
+                invested, final, gain = simulate_sip(df, sim_amount)
+                results.append((name, invested, final, gain))
+            except:
+                st.warning(f"Could not fetch NAV for {name}")
+
+        if results:
+            df_result = pd.DataFrame(results, columns=["Scheme", "Invested (₹)", "Final Value (₹)", "Gain (₹)"])
+            st.dataframe(df_result.style.format({"Invested (₹)": "{:,.0f}", "Final Value (₹)": "{:,.0f}", "Gain (₹)": "{:,.0f}"}))
+except Exception as e:
+    st.error(f"Error loading SIP comparison: {e}")
