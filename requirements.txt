@@ -1,8 +1,8 @@
 streamlit
 pandas
-requests
 plotly
+requests
+fuzzywuzzy
+python-levenshtein
 transformers
 torch
-fuzzywuzzy
-python-Levenshtein  # for fuzzywuzzy speedup
