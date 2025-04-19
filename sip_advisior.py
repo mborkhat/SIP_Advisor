@@ -71,6 +71,9 @@ st.subheader("\U0001F50D Search SIP Mutual Funds")
 st.markdown("Enter AMC Name, Fund Category (e.g., ELSS, Large Cap), or Scheme Name")
 user_query = st.text_input("Search", "Large Cap")
 
+# --- Smart Recommendations ---
+st.subheader("\U0001F4A1 Smart Top 3 SIP Suggestions")
+
 # Load the NLP model for extracting user inputs
 nlp_model = pipeline("ner", model="dbmdz/bert-large-cased-finetuned-conll03-english", device=-1)
 
@@ -115,6 +118,11 @@ if not funds.empty:
         selected_scheme = filtered.iloc[0]
         scheme_code = selected_scheme['schemeCode']
         scheme_name = selected_scheme['schemeName']
+
+        top_schemes = get_top_schemes_based_on_input(user_query, funds)
+        if not top_schemes.empty:
+            for _, row in top_schemes.iterrows():
+                st.markdown(f"**{row['schemeName']}**  ")
 
         st.subheader(f"Selected Scheme: {scheme_name}")
 
@@ -180,12 +188,5 @@ if not funds.empty:
             st.error(f"Error fetching data for {scheme_name}: {e}")
     else:
         st.warning("No schemes found matching your search.")
-
-    # --- Smart Recommendations ---
-    st.subheader("\U0001F4A1 Smart Top 3 SIP Suggestions")
-    top_schemes = get_top_schemes_based_on_input(user_query, funds)
-    if not top_schemes.empty:
-        for _, row in top_schemes.iterrows():
-            st.markdown(f"**{row['schemeName']}**  ")
 else:
     st.warning("Live fund list could not be loaded. Try again later.")
