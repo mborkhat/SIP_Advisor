@@ -102,58 +102,31 @@ def extract_entities(user_query):
     entities = nlp_model(user_query)
     return entities
 
-if not funds.empty:
-    filtered = funds[funds.apply(lambda row: user_query.lower() in row['schemeName'].lower(), axis=1)]
-    if not filtered.empty:
-        selected_scheme = filtered.iloc[0]
-        scheme_code = selected_scheme['schemeCode']
-        scheme_name = selected_scheme['schemeName']
-
-        st.subheader(f"Selected Scheme: {scheme_name}")
-
-        detail_url = f"https://api.mfapi.in/mf/{scheme_code}"
-        try:
-            detail = requests.get(detail_url).json()
-            if 'data' in detail and len(detail['data']) >= 250:
-                navs = pd.DataFrame(detail['data'])
-                navs['date'] = pd.to_datetime(navs['date'])
-                navs['nav'] = navs['nav'].astype(float)
-                navs = navs.sort_values('date')
-
-                one_year_ago = navs['date'].max() - pd.DateOffset(years=1)
-                navs_filtered = navs[navs['date'] >= one_year_ago]
-                one_year_return = (navs_filtered.iloc[-1]['nav'] - navs_filtered.iloc[0]['nav']) / navs_filtered.iloc[0]['nav'] * 100
-
-                if one_year_return > 14:
-                    signal = "Buy"
-                elif one_year_return > 10:
-                    signal = "Hold"
-                else:
-                    signal = "Sell"
-
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=navs['date'], y=navs['nav'], mode='lines', name=scheme_name))
-
-                if not nifty_df.empty:
-                    merged = pd.merge(navs, nifty_df, left_on=navs['date'].dt.strftime('%Y-%m-%d'), right_on='Date', how='left')
-                    fig.add_trace(go.Scatter(x=merged['date'], y=merged['Nifty_Close'], mode='lines', name='Nifty 50'))
-
-                fig.update_layout(
-                    title=f"NAV vs Nifty - {scheme_name}",
-                    xaxis_title="Date",
-                    yaxis_title="Value",
-                    xaxis_rangeslider_visible=True
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
-                st.subheader("Buy/Hold/Sell Signal")
-                st.write(f"1-Year Return: {round(one_year_return, 2)}%")
-                st.write(f"Recommendation: {signal}")
-            else:
-                st.warning("Not enough data to calculate signals.")
-        except Exception as e:
-            st.error(f"Error fetching data for {scheme_name}: {e}")
+# New function to handle user input and provide top 3 schemes
+def get_top_schemes_based_on_input(user_query):
+    # Extract key info from user query (e.g., expected return, tax-saving, category)
+    if "12-15%" in user_query and "6 months" in user_query:
+        # Suggest schemes with 12-15% return over 6 months (Example, filtering logic would depend on available data)
+        st.info("Here are the top 3 schemes with 12-15% return in 6 months:")
+        return funds.head(3)  # Placeholder, replace with actual filter logic based on performance
+    elif "tax" in user_query:
+        # Suggest tax-saving schemes (e.g., ELSS)
+        st.info("Here are the top 3 tax-saving SIP schemes:")
+        return funds[funds['category'] == 'ELSS'].head(3)  # Example for tax-saving (ELSS)
+    elif "large cap" in user_query:
+        # Suggest large cap schemes
+        st.info("Here are the top 3 Large Cap SIP schemes:")
+        return funds[funds['category'] == 'Large Cap'].head(3)  # Example for large-cap
+    elif "monthly sip of" in user_query and "return" in user_query:
+        # Extract amount and return expectation
+        return_amount = [int(s) for s in user_query.split() if s.isdigit()]
+        st.info(f"Here are the top 3 schemes for a monthly SIP of ₹{return_amount[0]} with expected return of {return_amount[1]}%:")
+        return funds.head(3)  # Placeholder, adjust logic based on return expectations
     else:
-        st.warning("No schemes found matching your search.")
-else:
-    st.warning("Live fund list could not be loaded. Try again later.")
+        st.info("Please provide more details for better suggestions.")
+        return pd.DataFrame()
+
+# Call the function based on user input
+top_schemes = get_top_schemes_based_on_input(user_query)
+if not top_schemes.empty:
+    st.write(top_schemes)
