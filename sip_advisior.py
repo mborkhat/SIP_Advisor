@@ -72,9 +72,8 @@ st.markdown("Enter AMC Name, Fund Category (e.g., ELSS, Large Cap), or Scheme Na
 user_query = st.text_input("Search", "Large Cap")
 
 # --- Smart Recommendations ---
-st.subheader("\U0001F4A1 Smart Top 3 SIP Suggestions")
+st.markdown("### \U0001F4A1 Smart Top 3 SIP Suggestions")
 
-# Load the NLP model for extracting user inputs
 nlp_model = pipeline("ner", model="dbmdz/bert-large-cased-finetuned-conll03-english", device=-1)
 
 @st.cache_data
@@ -190,3 +189,9 @@ if not funds.empty:
         st.warning("No schemes found matching your search.")
 else:
     st.warning("Live fund list could not be loaded. Try again later.")
+
+# --- Coming Soon Section ---
+st.markdown("---")
+st.markdown("## \U0001F680 Coming Soon")
+st.markdown("1. **Compare multiple SIP schemes** for selected time periods (e.g., 6-month return comparison)")
+st.markdown("2. **Real-time SIP simulation** showing investment journey month-by-month")
