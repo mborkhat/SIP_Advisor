@@ -127,8 +127,9 @@ if not funds.empty:
                 navs['nav'] = navs['nav'].astype(float)
                 navs = navs.sort_values('date')
 
-                st.subheader("Return Comparison Period")
-                return_period = st.selectbox("Select period", ["1y", "1m", "3m", "6m", "2y", "3y", "5y", "till date"], index=0)
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    return_period = st.selectbox("\U0001F552 Return Comparison Period", ["1y", "1m", "3m", "6m", "2y", "3y", "5y", "till date"], index=0)
 
                 period_mapping = {
                     "1m": pd.DateOffset(months=1),
@@ -149,12 +150,10 @@ if not funds.empty:
 
                 if len(navs_filtered) > 1:
                     selected_return = (navs_filtered.iloc[-1]['nav'] - navs_filtered.iloc[0]['nav']) / navs_filtered.iloc[0]['nav'] * 100
-                    if selected_return > 14:
-                        signal = "Buy"
-                    elif selected_return > 10:
-                        signal = "Hold"
-                    else:
-                        signal = "Sell"
+                    signal = "Buy" if selected_return > 14 else "Hold" if selected_return > 10 else "Sell"
+
+                    with col2:
+                        st.metric(label=f"{return_period} Return", value=f"{selected_return:.2f}%", delta=signal)
 
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=navs['date'], y=navs['nav'], mode='lines', name=f"{scheme_name} NAV"))
@@ -172,7 +171,6 @@ if not funds.empty:
                     st.plotly_chart(fig, use_container_width=True)
 
                     st.subheader("Buy/Hold/Sell Signal")
-                    st.write(f"{return_period} Return: {round(selected_return, 2)}%")
                     st.write(f"Recommendation: {signal}")
                 else:
                     st.warning("Not enough data for the selected period.")
