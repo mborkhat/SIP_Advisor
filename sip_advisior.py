@@ -104,24 +104,24 @@ def extract_entities(user_query):
 
 # New function to handle user input and provide top 3 schemes
 def get_top_schemes_based_on_input(user_query):
-    # Extract key info from user query (e.g., expected return, tax-saving, category)
+    # Detect return range (e.g., "12-15%")
     if "12-15%" in user_query and "6 months" in user_query:
-        # Suggest schemes with 12-15% return over 6 months (Example, filtering logic would depend on available data)
         st.info("Here are the top 3 schemes with 12-15% return in 6 months:")
-        return funds.head(3)  # Placeholder, replace with actual filter logic based on performance
-    elif "tax" in user_query:
-        # Suggest tax-saving schemes (e.g., ELSS)
+        return funds.head(3)  # Example placeholder, replace with actual logic based on data
+    # Tax-saving schemes (e.g., "tax" or "ELSS")
+    elif "tax" in user_query or "elss" in user_query:
         st.info("Here are the top 3 tax-saving SIP schemes:")
-        return funds[funds['category'] == 'ELSS'].head(3)  # Example for tax-saving (ELSS)
+        return funds[funds['category'] == 'ELSS'].head(3)  # Example filter for ELSS
+    # Categories like "large cap"
     elif "large cap" in user_query:
-        # Suggest large cap schemes
         st.info("Here are the top 3 Large Cap SIP schemes:")
-        return funds[funds['category'] == 'Large Cap'].head(3)  # Example for large-cap
-    elif "monthly sip of" in user_query and "return" in user_query:
-        # Extract amount and return expectation
+        return funds[funds['category'] == 'Large Cap'].head(3)  # Filter for large cap
+    # Specific SIP setup ("monthly SIP of 5K with 12% return")
+    elif "monthly sip" in user_query and "return" in user_query:
+        # Extract amount and return expectation (simplified for demo)
         return_amount = [int(s) for s in user_query.split() if s.isdigit()]
         st.info(f"Here are the top 3 schemes for a monthly SIP of ₹{return_amount[0]} with expected return of {return_amount[1]}%:")
-        return funds.head(3)  # Placeholder, adjust logic based on return expectations
+        return funds.head(3)  # Placeholder, can implement more specific logic based on user inputs
     else:
         st.info("Please provide more details for better suggestions.")
         return pd.DataFrame()
@@ -130,3 +130,4 @@ def get_top_schemes_based_on_input(user_query):
 top_schemes = get_top_schemes_based_on_input(user_query)
 if not top_schemes.empty:
     st.write(top_schemes)
+
